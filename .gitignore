@@ -1,0 +1,14 @@
+library-data/
+.venv/
+.codex_deps/
+app-config.json
+tmp/
+__pycache__/
+frontend/node_modules/
+frontend/dist/
+frontend/.cache/
+.pytest_cache/
+*.pyc
+*.log
+.DS_Store
+Thumbs.db
