@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import os
 import platform
 import runpy
@@ -17,6 +18,11 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 ZOTERO_PROBE_URL = "http://127.0.0.1:23119/api/users/0/items?limit=1"
+REQUIRED_MODULES = ("fastapi", "pydantic", "uvicorn")
+
+
+def missing_runtime_dependencies() -> list[str]:
+    return [name for name in REQUIRED_MODULES if importlib.util.find_spec(name) is None]
 
 
 def probe_zotero(timeout: float = 1.5) -> tuple[bool, str]:
@@ -104,6 +110,12 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
+    missing = missing_runtime_dependencies()
+    if missing:
+        joined = ", ".join(missing)
+        raise SystemExit(
+            f"PaperNote 安装尚未完成（缺少：{joined}）。请修复网络或代理后重新运行安装脚本，再启动 PaperNote。"
+        )
     start_server(args.port or (8765 if args.mode == "local" else 8766), args.no_browser, connect_zotero=args.mode == "server")
 
 

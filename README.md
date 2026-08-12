@@ -18,6 +18,14 @@ PaperNote 是 Zotero 的轻量本地科研笔记伴侣：
 
 首次双击 `setup.bat`，完成后双击 `start.bat`。
 
+安装脚本默认直连 Python 官方软件源，并隔离系统中遗留或失效的代理配置。第一次安装中途失败也不必删除 `.venv`，修复网络后重新运行 `setup.bat` 即可补全依赖。
+
+只有当前网络明确要求代理、并且已确认代理可用时，才手动指定：
+
+```powershell
+setup.bat -ProxyUrl http://127.0.0.1:7897
+```
+
 ### macOS
 
 首次在终端运行：
@@ -25,6 +33,12 @@ PaperNote 是 Zotero 的轻量本地科研笔记伴侣：
 ```sh
 chmod +x setup.sh start.sh start.command
 ./setup.sh
+```
+
+只有当前网络明确要求代理时才使用：
+
+```sh
+PAPERNOTE_PIP_PROXY=http://127.0.0.1:7897 ./setup.sh
 ```
 
 以后双击 `start.command`，或运行 `./start.sh`。
@@ -145,8 +159,9 @@ npm run build
 ## 常见问题
 
 - 页面拒绝连接：重新运行当前系统的启动入口；终端窗口需保持运行。
+- 首次安装出现 `ProxyError`：确认使用的是 GitHub 最新版；新版不会猜测代理。直接重新运行 `setup.bat`/`./setup.sh`。只有代理确实可用时才按上面的格式显式指定。
+- 启动提示缺少 `uvicorn`、`fastapi`：说明前一次安装没有完成。不要直接反复启动，先重新运行安装脚本，看到 `Runtime dependency check passed.` 后再启动。
 - Zotero 拒绝连接：先启动 Zotero，确认 Local API 可用，再测试连接。
 - 加载后仍是旧题录：在“外部文献”退出当前库，再刷新当前 Zotero 库。
 - 新电脑有题录但没有笔记：确认复制的是 `notes` 目录，并检查 Zotero 条目 Key/DOI 是否保留。
 - 端口被占用：启动器会选择其他端口，以实际打开的地址为准。
-

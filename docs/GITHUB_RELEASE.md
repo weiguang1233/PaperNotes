@@ -46,3 +46,16 @@ cd PaperNote
 
 随后运行 `setup.bat`（Windows）或 `./setup.sh`（macOS/Linux）。GitHub 只恢复程序，不恢复 Zotero 库和科研笔记；个人数据按 [MIGRATION.md](MIGRATION.md) 单独迁移。
 
+安装器默认采用不读取本机代理或 pip 用户配置的直连模式。如果所在网络确实必须使用代理，可显式运行：
+
+```powershell
+setup.bat -ProxyUrl http://127.0.0.1:7897
+```
+
+或：
+
+```sh
+PAPERNOTE_PIP_PROXY=http://127.0.0.1:7897 ./setup.sh
+```
+
+安装成功的判据是终端出现 `Runtime dependency check passed.`。若曾经因网络中断失败，直接重新运行安装脚本即可修复不完整的 `.venv`。

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 from pathlib import Path
 from urllib.request import Request
 
@@ -11,6 +12,7 @@ from backend.app.metadata import clean_keywords, format_note_value
 from backend.app import storage
 from backend.app.config import AppPaths
 from backend.app.storage import NOTE_FIELDS, parse_note_identity, parse_note_markdown, render_note_markdown
+from scripts.launcher import missing_runtime_dependencies
 
 
 class JsonResponse:
@@ -26,6 +28,18 @@ class JsonResponse:
 
     def read(self):
         return json.dumps(self.payload, ensure_ascii=False).encode("utf-8")
+
+
+def test_launcher_reports_incomplete_first_run_before_starting(monkeypatch):
+    real_find_spec = importlib.util.find_spec
+
+    def fake_find_spec(name: str):
+        if name == "uvicorn":
+            return None
+        return real_find_spec(name)
+
+    monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+    assert missing_runtime_dependencies() == ["uvicorn"]
 
 
 def test_markdown_note_round_trip_is_readable_and_complete():
