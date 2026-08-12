@@ -340,6 +340,18 @@ def restore_note_version(paper_id: int, version_id: int) -> dict[str, Any] | Non
     return save_note(paper_id, NotePayload(**{key: parsed.get(key, "") for key in NOTE_FIELDS}, force_version=True))
 
 
+def _selected_options(value: str | None, allowed: set[str]) -> set[str]:
+    return {item for item in str(value or "").split(",") if item in allowed}
+
+
+def _query_matches(searchable: str, query: str, mode: str) -> bool:
+    needle = query.casefold().strip()
+    if not needle:
+        return True
+    terms = [needle] if mode == "phrase" else [value for value in needle.split() if value]
+    return any(term in searchable for term in terms) if mode == "any" else all(term in searchable for term in terms)
+
+
 def search_papers(
     query: str,
     page: int = 1,
@@ -355,11 +367,17 @@ def search_papers(
     search_in: str = "all",
     note_status: str | None = None,
     sort_by: str = "favorite_recent",
+    document_types: str | None = None,
+    query_mode: str = "all",
 ) -> dict[str, Any]:
     state = store.snapshot()
     needle = query.casefold().strip()
     search_in = search_in if search_in in {"all", "title", "author", "abstract", "journal", "keyword", "note"} else "all"
-    note_status = note_status if note_status in {"complete", "incomplete", "empty", "stale"} else None
+    query_mode = query_mode if query_mode in {"all", "any", "phrase"} else "all"
+    reading_statuses = _selected_options(reading_status, {"unread", "reading", "read", "archived"})
+    note_statuses = _selected_options(note_status, {"complete", "incomplete", "empty", "stale"})
+    allowed_document_types = {"article", "thesis", "report", "book", "conference", "dataset", "preprint", "other"}
+    selected_document_types = _selected_options(document_types, allowed_document_types)
     tag_members = {int(key) for key, ids in state["paper_tags"].items() if tag_id in ids} if tag_id else None
     collection_members = {int(key) for key, ids in state["paper_collections"].items() if collection_id in ids} if collection_id else None
     results: list[dict[str, Any]] = []
@@ -377,7 +395,9 @@ def search_papers(
             continue
         if journal and journal.casefold() not in str(paper.get("journal") or "").casefold():
             continue
-        if reading_status and paper.get("reading_status") != reading_status:
+        if reading_statuses and paper.get("reading_status") not in reading_statuses:
+            continue
+        if selected_document_types and paper.get("document_type") not in selected_document_types:
             continue
         if needs_review is not None and bool(paper.get("needs_review")) != needs_review:
             continue
@@ -385,15 +405,18 @@ def search_papers(
             continue
         if tag_members is not None and paper_id not in tag_members or collection_members is not None and paper_id not in collection_members:
             continue
-        if note_status:
+        if note_statuses:
             overview = note_overview(paper_note(paper), paper.get("external_modified_at"))
-            if note_status == "complete" and overview["needs_update"]:
-                continue
-            if note_status == "incomplete" and (overview["completed_fields"] == 0 or not overview["missing_critical"]):
-                continue
-            if note_status == "empty" and overview["completed_fields"] != 0:
-                continue
-            if note_status == "stale" and not overview["source_is_newer"]:
+            states: set[str] = set()
+            if not overview["needs_update"]:
+                states.add("complete")
+            if overview["completed_fields"] > 0 and overview["missing_critical"]:
+                states.add("incomplete")
+            if overview["completed_fields"] == 0:
+                states.add("empty")
+            if overview["source_is_newer"]:
+                states.add("stale")
+            if not states.intersection(note_statuses):
                 continue
         if needle:
             fields = {
@@ -403,12 +426,12 @@ def search_papers(
                 "journal": str(paper.get("journal") or ""),
                 "keyword": " ".join(paper.get("keywords") or []),
             }
-            bibliographic = "\n".join(fields.values()).casefold() if search_in == "all" else fields.get(search_in, "").casefold()
-            matched = needle in bibliographic
-            if not matched and search_in in {"all", "note"}:
+            searchable = "\n".join(fields.values()).casefold() if search_in == "all" else fields.get(search_in, "").casefold()
+            if search_in in {"all", "note"}:
                 note = paper_note(paper)
                 excerpt_text = " ".join(str(item.get("text") or "") + " " + str(item.get("comment") or "") for item in state["excerpts"].values() if int(item["paper_id"]) == paper_id)
-                matched = needle in ("\n".join(str(note.get(key) or "") for key in NOTE_FIELDS) + excerpt_text).casefold()
+                searchable += "\n" + ("\n".join(str(note.get(key) or "") for key in NOTE_FIELDS) + excerpt_text).casefold()
+            matched = _query_matches(searchable, needle, query_mode)
             if not matched:
                 continue
         results.append(paper)

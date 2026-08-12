@@ -44,10 +44,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [filterStatus, setFilterStatus] = useState("");
+  const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
   const [searchIn, setSearchIn] = useState("all");
-  const [filterYear, setFilterYear] = useState("");
-  const [noteStatus, setNoteStatus] = useState("");
+  const [queryMode, setQueryMode] = useState("all");
+  const [yearFrom, setYearFrom] = useState("");
+  const [yearTo, setYearTo] = useState("");
+  const [noteStatuses, setNoteStatuses] = useState<string[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState("favorite_recent");
   const [batchMode, setBatchMode] = useState(false);
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
@@ -66,10 +69,13 @@ export default function App() {
     try {
       const params = new URLSearchParams({ q: query, page: String(page), page_size: "30" });
       if (view === "review") { params.set("needs_review", "true"); }
-      if (filterStatus) params.set("reading_status", filterStatus);
+      if (filterStatuses.length) params.set("reading_status", filterStatuses.join(","));
       if (searchIn !== "all") params.set("search_in", searchIn);
-      if (filterYear) { params.set("year_from", filterYear); params.set("year_to", filterYear); }
-      if (noteStatus) params.set("note_status", noteStatus);
+      params.set("query_mode", queryMode);
+      if (yearFrom) params.set("year_from", yearFrom);
+      if (yearTo) params.set("year_to", yearTo);
+      if (noteStatuses.length) params.set("note_status", noteStatuses.join(","));
+      if (documentTypes.length) params.set("document_types", documentTypes.join(","));
       params.set("sort_by", sortBy);
       const [next, allPapers] = await Promise.all([
         api<PagedPapers>(`/api/v1/search?${params}`),
@@ -89,14 +95,14 @@ export default function App() {
     if (view !== "library" && view !== "review") return;
     const timer = window.setTimeout(() => void loadPapers(1), 260);
     return () => window.clearTimeout(timer);
-  }, [query, view, filterStatus, searchIn, filterYear, noteStatus, sortBy]);
+  }, [query, view, filterStatuses, searchIn, queryMode, yearFrom, yearTo, noteStatuses, documentTypes, sortBy]);
 
   const submitSearch = () => setQuery(queryInput.trim());
   const clearSearchAndFilters = () => {
-    setQueryInput(""); setQuery(""); setSearchIn("all"); setFilterStatus("");
-    setFilterYear(""); setNoteStatus(""); setSortBy("favorite_recent");
+    setQueryInput(""); setQuery(""); setSearchIn("all"); setQueryMode("all"); setFilterStatuses([]);
+    setYearFrom(""); setYearTo(""); setNoteStatuses([]); setDocumentTypes([]); setSortBy("favorite_recent");
   };
-  const hasActiveFilters = Boolean(query || filterStatus || filterYear || noteStatus || searchIn !== "all" || sortBy !== "favorite_recent");
+  const hasActiveFilters = Boolean(query || filterStatuses.length || yearFrom || yearTo || noteStatuses.length || documentTypes.length || searchIn !== "all" || queryMode !== "all" || sortBy !== "favorite_recent");
 
   useEffect(() => {
     if (!selectedId) { setSelected(null); return; }
@@ -138,9 +144,7 @@ export default function App() {
       {(view === "library" || view === "review") && <>
         <header className="topbar">
           <form className="searchbox" onSubmit={event => { event.preventDefault(); submitSearch(); }}><span>⌕</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="输入关键词后按 Enter 搜索…" /><button type="submit">搜索</button>{queryInput && <button type="button" className="search-clear" aria-label="清空搜索词" onClick={() => { setQueryInput(""); setQuery(""); }}>×</button>}</form>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} aria-label="阅读状态">
-            <option value="">全部状态</option><option value="unread">未读</option><option value="reading">在读</option><option value="read">已读</option><option value="archived">归档</option>
-          </select>
+          <MultiFilter label="阅读状态" values={filterStatuses} options={[["unread", "未读"], ["reading", "在读"], ["read", "已读"], ["archived", "归档"]]} onChange={setFilterStatuses} compact />
           <button className="primary" onClick={() => setView("imports")}>⇄ 外部文献</button>
           <button className="icon-button" title="手工新建" onClick={() => setShowCreate(true)}>＋</button>
         </header>
@@ -149,11 +153,14 @@ export default function App() {
             <div className="section-heading"><div><span className="eyebrow">{view === "review" ? "REVIEW QUEUE" : "NOTE LIBRARY"}</span><h1>{view === "review" ? "待复核文献" : "我的文献"}</h1></div><div className="section-heading-actions"><div className="library-count"><strong>{libraryTotal.toLocaleString()}</strong><span>文献总数</span>{(hasActiveFilters || view === "review") && <em>当前结果 {data.total.toLocaleString()} 篇</em>}</div><button className={batchMode ? "active" : ""} onClick={() => { if (batchMode) leaveBatchMode(); else { setBatchMode(true); setSelectedId(null); } }}>{batchMode ? "退出批量选择" : "多选文献"}</button></div></div>
             <div className="library-filterbar">
               <label><span>检索范围</span><select value={searchIn} onChange={event => setSearchIn(event.target.value)}><option value="all">全部内容</option><option value="title">仅题名</option><option value="author">仅作者</option><option value="abstract">仅原文摘要</option><option value="journal">仅期刊/来源</option><option value="keyword">仅关键词</option><option value="note">仅科研笔记</option></select></label>
-              <label><span>年份</span><input type="number" min="1000" max="2100" value={filterYear} onChange={event => setFilterYear(event.target.value)} placeholder="全部年份" /></label>
-              <label><span>笔记状态</span><select value={noteStatus} onChange={event => setNoteStatus(event.target.value)}><option value="">全部笔记</option><option value="complete">核心笔记完整</option><option value="incomplete">笔记待完善</option><option value="empty">暂无笔记</option><option value="stale">Zotero 后有更新</option></select></label>
+              <label><span>关键词匹配</span><select value={queryMode} onChange={event => setQueryMode(event.target.value)}><option value="all">全部关键词（AND）</option><option value="any">任一关键词（OR）</option><option value="phrase">完整短语</option></select></label>
+              <div className="year-range"><span>年份范围</span><div><input aria-label="起始年份" type="number" min="1000" max="2100" value={yearFrom} onChange={event => setYearFrom(event.target.value)} placeholder="起始" /><b>—</b><input aria-label="结束年份" type="number" min="1000" max="2100" value={yearTo} onChange={event => setYearTo(event.target.value)} placeholder="结束" /></div></div>
+              <MultiFilter label="文献类型" values={documentTypes} options={Object.entries(DOCUMENT_TYPE_LABEL)} onChange={setDocumentTypes} />
+              <MultiFilter label="笔记状态" values={noteStatuses} options={[["complete", "核心笔记完整"], ["incomplete", "笔记待完善"], ["empty", "暂无笔记"], ["stale", "Zotero 后有更新"]]} onChange={setNoteStatuses} />
               <label className="sort-control"><span>排序方式</span><select value={sortBy} onChange={event => setSortBy(event.target.value)}><option value="favorite_recent">收藏优先 · 最近更新</option><option value="year_desc">年份：新到旧</option><option value="year_asc">年份：旧到新</option><option value="title_asc">题名：A–Z</option><option value="title_desc">题名：Z–A</option><option value="author_asc">首位作者：A–Z</option><option value="note_updated_desc">笔记：最近更新</option></select></label>
               {hasActiveFilters && <button className="clear-filters" onClick={clearSearchAndFilters}>清除全部条件</button>}
             </div>
+            {hasActiveFilters && <div className="active-filter-summary"><strong>当前采用交集筛选</strong><span>不同栏目之间需同时满足；同一多选栏目匹配任一所选项。</span>{query && <em>关键词：{query}</em>}{(yearFrom || yearTo) && <em>年份：{yearFrom || "不限"}—{yearTo || "不限"}</em>}{filterStatuses.length > 0 && <em>阅读状态 {filterStatuses.length} 项</em>}{documentTypes.length > 0 && <em>文献类型 {documentTypes.length} 项</em>}{noteStatuses.length > 0 && <em>笔记状态 {noteStatuses.length} 项</em>}</div>}
             {error && <div className="error-banner">{error}</div>}
             {batchMode && <div className="batch-select-toolbar"><label><input type="checkbox" checked={data.items.length > 0 && data.items.every(item => batchSelected.has(item.id))} onChange={event => { const checked = event.target.checked; setBatchSelected(current => { const next = new Set(current); data.items.forEach(item => checked ? next.add(item.id) : next.delete(item.id)); return next; }); setBatchPapers(current => { const next = new Map(current); data.items.forEach(item => checked ? next.set(item.id, item) : next.delete(item.id)); return next; }); }} />选择当前页</label><strong>已选 {batchSelected.size} 篇</strong><button className="primary" disabled={!batchSelected.size} onClick={() => setBatchOpen(true)}>一键读所选文献</button><button className="danger" disabled={!batchSelected.size} onClick={() => void trashBatchPapers()}>删除所选到回收站</button></div>}
             {loading ? <Loading /> : data.items.length === 0 ? <EmptyLibrary onImport={() => setView("imports")} /> : <div className="paper-list">
@@ -178,6 +185,17 @@ function Loading() { return <div className="loading"><i /><span>正在整理资�
 
 function EmptyLibrary({ onImport }: { onImport: () => void }) {
   return <div className="empty-state"><div className="empty-orbit"><span>REF</span></div><h2>连接你的文献库</h2><p>从 Zotero 同步题录和附件链接，PaperNote 只在本地保存科研笔记，不复制文献 PDF。</p><button className="primary" onClick={onImport}>连接外部文献库</button></div>;
+}
+
+function MultiFilter({ label, values, options, onChange, compact = false }: { label: string; values: string[]; options: [string, string][]; onChange: (values: string[]) => void; compact?: boolean }) {
+  const toggle = (value: string) => onChange(values.includes(value) ? values.filter(item => item !== value) : [...values, value]);
+  return <details className={`multi-filter ${compact ? "compact" : ""}`}>
+    <summary><span>{label}</span><strong>{values.length ? `已选 ${values.length} 项` : `全部${label.replace("状态", "")}`}</strong></summary>
+    <div className="multi-filter-menu">
+      <div className="multi-filter-head"><b>{label}（可多选）</b>{values.length > 0 && <button type="button" onClick={() => onChange([])}>清空</button>}</div>
+      {options.map(([value, text]) => <label key={value}><input type="checkbox" checked={values.includes(value)} onChange={() => toggle(value)} /><span>{text}</span></label>)}
+    </div>
+  </details>;
 }
 
 function PaperCard({ paper, selected, batchMode, checked, onToggle, onClick }: { paper: PaperSummary; selected: boolean; batchMode: boolean; checked: boolean; onToggle: () => void; onClick: () => void }) {

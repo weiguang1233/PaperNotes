@@ -244,10 +244,12 @@ def search(
     reading_status: str | None = None, tag_id: int | None = None, collection_id: int | None = None,
     needs_review: bool | None = None, needs_ocr: bool | None = None,
     search_in: str = "all", note_status: str | None = None, sort_by: str = "favorite_recent",
+    document_types: str | None = None, query_mode: str = "all",
 ):
     return search_papers(
         q, page, page_size, year_from, year_to, journal, reading_status, tag_id,
         collection_id, needs_review, needs_ocr, search_in, note_status, sort_by,
+        document_types, query_mode,
     )
 
 

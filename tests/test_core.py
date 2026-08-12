@@ -8,7 +8,7 @@ from urllib.request import Request
 
 from backend.app.enrichment import _chat_completions_endpoint, _parse_llm_json_object
 from backend.app.integrations import ZoteroConfig, load_zotero_paper_context, map_zotero_item
-from backend.app.library import note_overview
+from backend.app.library import _query_matches, _selected_options, note_overview
 from backend.app.metadata import clean_keywords, format_note_value
 from backend.app import storage
 from backend.app import config
@@ -219,6 +219,19 @@ def test_note_overview_recognises_complete_core_notes():
     assert overview["missing_critical"] == []
     assert overview["needs_update"] is False
     assert overview["status"] == "核心笔记已完成"
+
+
+def test_multi_filter_options_ignore_unknown_values():
+    assert _selected_options("unread,read,unknown", {"unread", "reading", "read"}) == {"unread", "read"}
+
+
+def test_keyword_matching_supports_and_or_and_phrase_modes():
+    searchable = "physics based weather forecast for record breaking extremes".casefold()
+    assert _query_matches(searchable, "weather extremes", "all") is True
+    assert _query_matches(searchable, "rainfall extremes", "all") is False
+    assert _query_matches(searchable, "rainfall extremes", "any") is True
+    assert _query_matches(searchable, "weather forecast", "phrase") is True
+    assert _query_matches(searchable, "weather extremes", "phrase") is False
 
 
 def test_deepseek_endpoint_shape():
