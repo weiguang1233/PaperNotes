@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import webbrowser
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -11,7 +12,8 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .config import PATHS, PROJECT_ROOT, save_data_root
+from .config import PATHS, PROJECT_ROOT, data_root_source, save_data_root
+from .folder_picker import FolderPickerUnavailable, choose_directory
 from .storage import NOTE_FIELDS, store, utc_now
 from .exchange import create_backup, export_library, restore_backup
 from .enrichment import DEFAULT_LLM_BASE_URL, DEFAULT_LLM_MODEL, apply_refresh_preview, import_external_model_text, refresh_paper, refresh_paper_preview, test_llm_connection
@@ -622,6 +624,8 @@ def restore(payload: BackupRestore):
 def settings():
     return {
         "data_root": str(PATHS.root),
+        "data_root_source": data_root_source(),
+        "data_root_locked": data_root_source() == "environment",
         "crossref_email": store.setting("crossref_email"),
         "llm_base_url": store.setting("llm_base_url", DEFAULT_LLM_BASE_URL),
         "llm_api_key": store.setting("llm_api_key"),
@@ -668,12 +672,26 @@ def llm_test():
 
 @app.put("/api/v1/settings/data-root")
 def update_data_root(payload: DataRootUpdate):
+    if os.environ.get("PAPERNOTE_DATA_DIR"):
+        raise HTTPException(
+            status_code=409,
+            detail="笔记库位置当前由 PAPERNOTE_DATA_DIR 环境变量锁定。请删除或修改该环境变量后重启 PaperNote。",
+        )
     path = Path(payload.path)
     try:
         resolved = save_data_root(path)
     except OSError as exc:
         raise HTTPException(status_code=422, detail=f"无法使用该目录：{exc}") from exc
     return {"data_root": str(resolved), "restart_required": resolved != PATHS.root}
+
+
+@app.post("/api/v1/settings/data-root/choose")
+def choose_data_root():
+    try:
+        selected = choose_directory(PATHS.root)
+    except (FolderPickerUnavailable, OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    return {"path": str(selected.resolve()) if selected else None}
 
 
 frontend_dist = next(

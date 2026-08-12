@@ -53,7 +53,7 @@ export interface PaperDetail extends PaperSummary {
 }
 export interface PagedPapers { items: PaperSummary[]; total: number; page: number; page_size: number }
 export interface AppSettings {
-  data_root: string; crossref_email: string;
+  data_root: string; data_root_source: "default" | "config" | "environment"; data_root_locked: boolean; crossref_email: string;
   llm_base_url: string; llm_api_key: string; llm_model: string; llm_configured: boolean;
   zotero_base_url: string; zotero_library_id: string; zotero_api_key: string; zotero_configured: boolean;
   obsidian_vault_path: string; obsidian_folder: string;

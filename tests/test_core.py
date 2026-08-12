@@ -10,6 +10,7 @@ from backend.app.integrations import ZoteroConfig, load_zotero_paper_context, ma
 from backend.app.library import note_overview
 from backend.app.metadata import clean_keywords, format_note_value
 from backend.app import storage
+from backend.app import config
 from backend.app.config import AppPaths
 from backend.app.storage import NOTE_FIELDS, parse_note_identity, parse_note_markdown, render_note_markdown
 from scripts.launcher import missing_runtime_dependencies
@@ -40,6 +41,28 @@ def test_launcher_reports_incomplete_first_run_before_starting(monkeypatch):
 
     monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
     assert missing_runtime_dependencies() == ["uvicorn"]
+
+
+def test_note_library_location_is_saved_without_discarding_other_config(tmp_path, monkeypatch):
+    config_file = tmp_path / "app-config.json"
+    config_file.write_text(json.dumps({"window": "keep"}), encoding="utf-8")
+    monkeypatch.setattr(config, "CONFIG_FILE", config_file)
+    selected = tmp_path / "portable-notes"
+
+    resolved = config.save_data_root(selected)
+
+    assert resolved == selected.resolve()
+    assert selected.is_dir()
+    assert json.loads(config_file.read_text(encoding="utf-8")) == {
+        "window": "keep",
+        "data_root": str(selected.resolve()),
+    }
+    assert config.data_root_source() == "config"
+
+
+def test_environment_variable_marks_note_library_location_as_locked(monkeypatch):
+    monkeypatch.setenv("PAPERNOTE_DATA_DIR", "D:/External/PaperNoteNotes")
+    assert config.data_root_source() == "environment"
 
 
 def test_markdown_note_round_trip_is_readable_and_complete():

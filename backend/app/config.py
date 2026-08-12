@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,14 +55,37 @@ def _configured_data_root() -> Path:
     return PROJECT_ROOT / "library-data"
 
 
+def data_root_source() -> str:
+    if os.environ.get("PAPERNOTE_DATA_DIR"):
+        return "environment"
+    if CONFIG_FILE.exists():
+        try:
+            if json.loads(CONFIG_FILE.read_text(encoding="utf-8")).get("data_root"):
+                return "config"
+        except (OSError, ValueError, TypeError):
+            pass
+    return "default"
+
+
 PATHS = AppPaths.from_root(_configured_data_root())
 
 
 def save_data_root(path: Path) -> Path:
     resolved = path.expanduser().resolve()
     resolved.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(
-        json.dumps({"data_root": str(resolved)}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    if resolved == Path(resolved.anchor):
+        raise OSError("不能把磁盘根目录直接作为笔记库，请选择一个专用文件夹")
+    with tempfile.NamedTemporaryFile(prefix=".papernote-write-test-", dir=resolved, delete=True):
+        pass
+    existing: dict[str, object] = {}
+    if CONFIG_FILE.exists():
+        try:
+            existing = json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            existing = {}
+    existing["data_root"] = str(resolved)
+    CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temp = CONFIG_FILE.with_suffix(".json.tmp")
+    temp.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temp, CONFIG_FILE)
     return resolved
