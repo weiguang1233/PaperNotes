@@ -11,6 +11,22 @@ class FolderPickerUnavailable(RuntimeError):
     pass
 
 
+def _windows_picker_script() -> str:
+    """Build a picker that starts at the current folder without restricting navigation to it."""
+    return (
+        "[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
+        "Add-Type -AssemblyName System.Windows.Forms;"
+        "$dialog=New-Object System.Windows.Forms.FolderBrowserDialog;"
+        "$dialog.Description='选择 PaperNote 笔记库文件夹';"
+        "$dialog.RootFolder=[Environment+SpecialFolder]::Desktop;"
+        "$dialog.SelectedPath=$env:PAPERNOTE_PICKER_INITIAL;"
+        "$dialog.ShowNewFolderButton=$true;"
+        "if($dialog.ShowDialog() -eq [Windows.Forms.DialogResult]::OK){"
+        "[Console]::Write($dialog.SelectedPath)};"
+        "$dialog.Dispose()"
+    )
+
+
 def choose_directory(initial: Path) -> Path | None:
     """Open the operating-system folder picker from the companion service."""
     system = platform.system()
@@ -18,12 +34,7 @@ def choose_directory(initial: Path) -> Path | None:
         powershell = shutil.which("powershell.exe") or shutil.which("powershell")
         if not powershell:
             raise FolderPickerUnavailable("未找到 Windows 文件夹选择器")
-        script = (
-            "[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
-            "$shell=New-Object -ComObject Shell.Application;"
-            "$folder=$shell.BrowseForFolder(0,'选择 PaperNote 笔记库文件夹',0,$env:PAPERNOTE_PICKER_INITIAL);"
-            "if($folder){[Console]::Write($folder.Self.Path)}"
-        )
+        script = _windows_picker_script()
         env = os.environ.copy()
         env["PAPERNOTE_PICKER_INITIAL"] = str(initial)
         completed = subprocess.run(

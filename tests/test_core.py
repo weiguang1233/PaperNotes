@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.request import Request
 
 from backend.app.enrichment import _chat_completions_endpoint, _parse_llm_json_object
@@ -12,6 +13,7 @@ from backend.app.metadata import clean_keywords, format_note_value
 from backend.app import storage
 from backend.app import config
 from backend.app.config import AppPaths
+from backend.app import folder_picker
 from backend.app.storage import NOTE_FIELDS, parse_note_identity, parse_note_markdown, render_note_markdown
 from scripts.launcher import missing_runtime_dependencies
 
@@ -63,6 +65,28 @@ def test_note_library_location_is_saved_without_discarding_other_config(tmp_path
 def test_environment_variable_marks_note_library_location_as_locked(monkeypatch):
     monkeypatch.setenv("PAPERNOTE_DATA_DIR", "D:/External/PaperNoteNotes")
     assert config.data_root_source() == "environment"
+
+
+def test_windows_folder_picker_uses_initial_path_without_restricting_navigation(monkeypatch):
+    observed: dict[str, object] = {}
+
+    def fake_run(command, **kwargs):
+        observed["command"] = command
+        observed["env"] = kwargs["env"]
+        return SimpleNamespace(returncode=0, stdout="E:\\Research\\PaperNotes\n", stderr="")
+
+    monkeypatch.setattr(folder_picker.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(folder_picker.shutil, "which", lambda _: "powershell.exe")
+    monkeypatch.setattr(folder_picker.subprocess, "run", fake_run)
+
+    selected = folder_picker.choose_directory(Path("D:/MyCodex/PaperNote/library-data"))
+
+    script = observed["command"][-1]
+    assert "FolderBrowserDialog" in script
+    assert "RootFolder=[Environment+SpecialFolder]::Desktop" in script
+    assert "SelectedPath=$env:PAPERNOTE_PICKER_INITIAL" in script
+    assert "BrowseForFolder" not in script
+    assert selected == Path("E:/Research/PaperNotes")
 
 
 def test_markdown_note_round_trip_is_readable_and_complete():
