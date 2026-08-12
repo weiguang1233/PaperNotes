@@ -108,6 +108,8 @@ PaperNote 首先按稳定的 Zotero Item Key 查找 `<Zotero Key>.md`。若导�
 
 完整步骤和故障排查见 [跨电脑迁移说明](docs/MIGRATION.md)。
 
+若要换 Codex/代码 Agent、重新打开 Project，或让另一位开发者继续本项目，请先阅读 [继续开发与交接说明](docs/CONTINUING_DEVELOPMENT.md)。仓库根目录的 `AGENTS.md` 记录了不得恢复 SQLite、本地 PDF 副本和全文翻译等当前架构约束。
+
 ## Obsidian
 
 最简单的方式是把 `library-data/notes` 直接作为 Obsidian Vault 打开。若已有 Vault，在“设置与备份 → Obsidian 笔记”中填写 Vault 路径和目标子目录，再同步全部笔记。
@@ -139,6 +141,8 @@ macOS/Linux：
 - `frontend/dist-portable`：无需 Node.js 即可运行的预构建网页；
 - `scripts/launcher.py`：Windows、macOS、Linux 共用启动逻辑；
 - `tests`：关键迁移、Zotero 和笔记格式测试。
+
+换 Agent、换 Project 和换电脑的开发接手流程见 [继续开发与交接说明](docs/CONTINUING_DEVELOPMENT.md)。
 
 `.venv`、`frontend/node_modules`、`library-data`、临时文件和 API Key 均被 `.gitignore` 排除，不应上传 GitHub。
 
