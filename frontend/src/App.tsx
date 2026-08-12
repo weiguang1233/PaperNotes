@@ -33,6 +33,7 @@ function formatAuthors(paper: PaperSummary) {
 
 export default function App() {
   const [view, setView] = useState<View>("library");
+  const [queryInput, setQueryInput] = useState("");
   const [query, setQuery] = useState("");
   const [data, setData] = useState<PagedPapers>({ items: [], total: 0, page: 1, page_size: 30 });
   const [libraryTotal, setLibraryTotal] = useState(0);
@@ -44,6 +45,10 @@ export default function App() {
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [filterStatus, setFilterStatus] = useState("");
+  const [searchIn, setSearchIn] = useState("all");
+  const [filterYear, setFilterYear] = useState("");
+  const [noteStatus, setNoteStatus] = useState("");
+  const [sortBy, setSortBy] = useState("favorite_recent");
   const [batchMode, setBatchMode] = useState(false);
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
   const [batchPapers, setBatchPapers] = useState<Map<number, PaperSummary>>(new Map());
@@ -62,6 +67,10 @@ export default function App() {
       const params = new URLSearchParams({ q: query, page: String(page), page_size: "30" });
       if (view === "review") { params.set("needs_review", "true"); }
       if (filterStatus) params.set("reading_status", filterStatus);
+      if (searchIn !== "all") params.set("search_in", searchIn);
+      if (filterYear) { params.set("year_from", filterYear); params.set("year_to", filterYear); }
+      if (noteStatus) params.set("note_status", noteStatus);
+      params.set("sort_by", sortBy);
       const [next, allPapers] = await Promise.all([
         api<PagedPapers>(`/api/v1/search?${params}`),
         api<PagedPapers>("/api/v1/papers?page=1&page_size=1"),
@@ -80,7 +89,14 @@ export default function App() {
     if (view !== "library" && view !== "review") return;
     const timer = window.setTimeout(() => void loadPapers(1), 260);
     return () => window.clearTimeout(timer);
-  }, [query, view, filterStatus]);
+  }, [query, view, filterStatus, searchIn, filterYear, noteStatus, sortBy]);
+
+  const submitSearch = () => setQuery(queryInput.trim());
+  const clearSearchAndFilters = () => {
+    setQueryInput(""); setQuery(""); setSearchIn("all"); setFilterStatus("");
+    setFilterYear(""); setNoteStatus(""); setSortBy("favorite_recent");
+  };
+  const hasActiveFilters = Boolean(query || filterStatus || filterYear || noteStatus || searchIn !== "all" || sortBy !== "favorite_recent");
 
   useEffect(() => {
     if (!selectedId) { setSelected(null); return; }
@@ -121,7 +137,7 @@ export default function App() {
     <main className="workspace">
       {(view === "library" || view === "review") && <>
         <header className="topbar">
-          <div className="searchbox"><span>⌕</span><input value={query} onChange={event => setQuery(event.target.value)} placeholder="搜索题名、作者、摘要或科研笔记…" /></div>
+          <form className="searchbox" onSubmit={event => { event.preventDefault(); submitSearch(); }}><span>⌕</span><input value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="输入关键词后按 Enter 搜索…" /><button type="submit">搜索</button>{queryInput && <button type="button" className="search-clear" aria-label="清空搜索词" onClick={() => { setQueryInput(""); setQuery(""); }}>×</button>}</form>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} aria-label="阅读状态">
             <option value="">全部状态</option><option value="unread">未读</option><option value="reading">在读</option><option value="read">已读</option><option value="archived">归档</option>
           </select>
@@ -130,7 +146,14 @@ export default function App() {
         </header>
         <section className="library-layout">
           <div className={`paper-pane ${selectedId ? "has-selection" : ""}`}>
-            <div className="section-heading"><div><span className="eyebrow">{view === "review" ? "REVIEW QUEUE" : "NOTE LIBRARY"}</span><h1>{view === "review" ? "待复核文献" : "我的文献"}</h1></div><div className="section-heading-actions"><div className="library-count"><strong>{libraryTotal.toLocaleString()}</strong><span>文献总数</span>{(query || filterStatus || view === "review") && <em>当前结果 {data.total.toLocaleString()} 篇</em>}</div><button className={batchMode ? "active" : ""} onClick={() => { if (batchMode) leaveBatchMode(); else { setBatchMode(true); setSelectedId(null); } }}>{batchMode ? "退出批量选择" : "多选文献"}</button></div></div>
+            <div className="section-heading"><div><span className="eyebrow">{view === "review" ? "REVIEW QUEUE" : "NOTE LIBRARY"}</span><h1>{view === "review" ? "待复核文献" : "我的文献"}</h1></div><div className="section-heading-actions"><div className="library-count"><strong>{libraryTotal.toLocaleString()}</strong><span>文献总数</span>{(hasActiveFilters || view === "review") && <em>当前结果 {data.total.toLocaleString()} 篇</em>}</div><button className={batchMode ? "active" : ""} onClick={() => { if (batchMode) leaveBatchMode(); else { setBatchMode(true); setSelectedId(null); } }}>{batchMode ? "退出批量选择" : "多选文献"}</button></div></div>
+            <div className="library-filterbar">
+              <label><span>检索范围</span><select value={searchIn} onChange={event => setSearchIn(event.target.value)}><option value="all">全部内容</option><option value="title">仅题名</option><option value="author">仅作者</option><option value="abstract">仅原文摘要</option><option value="journal">仅期刊/来源</option><option value="keyword">仅关键词</option><option value="note">仅科研笔记</option></select></label>
+              <label><span>年份</span><input type="number" min="1000" max="2100" value={filterYear} onChange={event => setFilterYear(event.target.value)} placeholder="全部年份" /></label>
+              <label><span>笔记状态</span><select value={noteStatus} onChange={event => setNoteStatus(event.target.value)}><option value="">全部笔记</option><option value="complete">核心笔记完整</option><option value="incomplete">笔记待完善</option><option value="empty">暂无笔记</option><option value="stale">Zotero 后有更新</option></select></label>
+              <label className="sort-control"><span>排序方式</span><select value={sortBy} onChange={event => setSortBy(event.target.value)}><option value="favorite_recent">收藏优先 · 最近更新</option><option value="year_desc">年份：新到旧</option><option value="year_asc">年份：旧到新</option><option value="title_asc">题名：A–Z</option><option value="title_desc">题名：Z–A</option><option value="author_asc">首位作者：A–Z</option><option value="note_updated_desc">笔记：最近更新</option></select></label>
+              {hasActiveFilters && <button className="clear-filters" onClick={clearSearchAndFilters}>清除全部条件</button>}
+            </div>
             {error && <div className="error-banner">{error}</div>}
             {batchMode && <div className="batch-select-toolbar"><label><input type="checkbox" checked={data.items.length > 0 && data.items.every(item => batchSelected.has(item.id))} onChange={event => { const checked = event.target.checked; setBatchSelected(current => { const next = new Set(current); data.items.forEach(item => checked ? next.add(item.id) : next.delete(item.id)); return next; }); setBatchPapers(current => { const next = new Map(current); data.items.forEach(item => checked ? next.set(item.id, item) : next.delete(item.id)); return next; }); }} />选择当前页</label><strong>已选 {batchSelected.size} 篇</strong><button className="primary" disabled={!batchSelected.size} onClick={() => setBatchOpen(true)}>一键读所选文献</button><button className="danger" disabled={!batchSelected.size} onClick={() => void trashBatchPapers()}>删除所选到回收站</button></div>}
             {loading ? <Loading /> : data.items.length === 0 ? <EmptyLibrary onImport={() => setView("imports")} /> : <div className="paper-list">

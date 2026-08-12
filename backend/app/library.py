@@ -340,12 +340,37 @@ def restore_note_version(paper_id: int, version_id: int) -> dict[str, Any] | Non
     return save_note(paper_id, NotePayload(**{key: parsed.get(key, "") for key in NOTE_FIELDS}, force_version=True))
 
 
-def search_papers(query: str, page: int = 1, page_size: int = 30, year_from: int | None = None, year_to: int | None = None, journal: str | None = None, reading_status: str | None = None, tag_id: int | None = None, collection_id: int | None = None, needs_review: bool | None = None, needs_ocr: bool | None = None) -> dict[str, Any]:
+def search_papers(
+    query: str,
+    page: int = 1,
+    page_size: int = 30,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    journal: str | None = None,
+    reading_status: str | None = None,
+    tag_id: int | None = None,
+    collection_id: int | None = None,
+    needs_review: bool | None = None,
+    needs_ocr: bool | None = None,
+    search_in: str = "all",
+    note_status: str | None = None,
+    sort_by: str = "favorite_recent",
+) -> dict[str, Any]:
     state = store.snapshot()
     needle = query.casefold().strip()
+    search_in = search_in if search_in in {"all", "title", "author", "abstract", "journal", "keyword", "note"} else "all"
+    note_status = note_status if note_status in {"complete", "incomplete", "empty", "stale"} else None
     tag_members = {int(key) for key, ids in state["paper_tags"].items() if tag_id in ids} if tag_id else None
     collection_members = {int(key) for key, ids in state["paper_collections"].items() if collection_id in ids} if collection_id else None
-    results = []
+    results: list[dict[str, Any]] = []
+    notes: dict[int, dict[str, Any]] = {}
+
+    def paper_note(paper: dict[str, Any]) -> dict[str, Any]:
+        paper_id = int(paper["id"])
+        if paper_id not in notes:
+            notes[paper_id] = store.read_note(paper)
+        return notes[paper_id]
+
     for paper in state["papers"].values():
         paper_id = int(paper["id"])
         if not _visible(paper, state) or (year_from is not None and (paper.get("year") or 0) < year_from) or (year_to is not None and (paper.get("year") or 9999) > year_to):
@@ -360,15 +385,48 @@ def search_papers(query: str, page: int = 1, page_size: int = 30, year_from: int
             continue
         if tag_members is not None and paper_id not in tag_members or collection_members is not None and paper_id not in collection_members:
             continue
+        if note_status:
+            overview = note_overview(paper_note(paper), paper.get("external_modified_at"))
+            if note_status == "complete" and overview["needs_update"]:
+                continue
+            if note_status == "incomplete" and (overview["completed_fields"] == 0 or not overview["missing_critical"]):
+                continue
+            if note_status == "empty" and overview["completed_fields"] != 0:
+                continue
+            if note_status == "stale" and not overview["source_is_newer"]:
+                continue
         if needle:
-            bibliographic = "\n".join((str(paper.get("title") or ""), " ".join(author_display(a) for a in paper.get("authors") or []), str(paper.get("abstract") or ""), " ".join(paper.get("keywords") or []))).casefold()
-            if needle not in bibliographic:
-                note = store.read_note(paper)
+            fields = {
+                "title": str(paper.get("title") or ""),
+                "author": " ".join(author_display(a) for a in paper.get("authors") or []),
+                "abstract": str(paper.get("abstract") or ""),
+                "journal": str(paper.get("journal") or ""),
+                "keyword": " ".join(paper.get("keywords") or []),
+            }
+            bibliographic = "\n".join(fields.values()).casefold() if search_in == "all" else fields.get(search_in, "").casefold()
+            matched = needle in bibliographic
+            if not matched and search_in in {"all", "note"}:
+                note = paper_note(paper)
                 excerpt_text = " ".join(str(item.get("text") or "") + " " + str(item.get("comment") or "") for item in state["excerpts"].values() if int(item["paper_id"]) == paper_id)
-                if needle not in ("\n".join(str(note.get(key) or "") for key in NOTE_FIELDS) + excerpt_text).casefold():
-                    continue
+                matched = needle in ("\n".join(str(note.get(key) or "") for key in NOTE_FIELDS) + excerpt_text).casefold()
+            if not matched:
+                continue
         results.append(paper)
-    results.sort(key=lambda paper: (bool(paper.get("favorite")), str(paper.get("updated_at") or "")), reverse=True)
+
+    if sort_by == "year_desc":
+        results.sort(key=lambda paper: (paper.get("year") is not None, int(paper.get("year") or 0), str(paper.get("title") or "").casefold()), reverse=True)
+    elif sort_by == "year_asc":
+        results.sort(key=lambda paper: (paper.get("year") is None, int(paper.get("year") or 9999), str(paper.get("title") or "").casefold()))
+    elif sort_by == "title_asc":
+        results.sort(key=lambda paper: str(paper.get("title") or "").casefold())
+    elif sort_by == "title_desc":
+        results.sort(key=lambda paper: str(paper.get("title") or "").casefold(), reverse=True)
+    elif sort_by == "author_asc":
+        results.sort(key=lambda paper: (author_display((paper.get("authors") or [{}])[0]).casefold(), str(paper.get("title") or "").casefold()))
+    elif sort_by == "note_updated_desc":
+        results.sort(key=lambda paper: str(paper_note(paper).get("updated_at") or ""), reverse=True)
+    else:
+        results.sort(key=lambda paper: (bool(paper.get("favorite")), str(paper.get("updated_at") or "")), reverse=True)
     offset = (page - 1) * page_size
     return {"items": [_summary(paper) for paper in results[offset:offset + page_size]], "total": len(results), "page": page, "page_size": page_size}
 

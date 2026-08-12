@@ -44,9 +44,11 @@ textarea { resize: vertical; line-height: 1.6; }
 .workspace { grid-column: 2; min-width: 0; }
 
 .topbar { height: 78px; padding: 17px 30px; background: rgba(250,249,245,.92); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 4; backdrop-filter: blur(12px); }
-.searchbox { flex: 1; max-width: 720px; position: relative; }
+.searchbox { flex: 1; max-width: 720px; position: relative; display: flex; }
 .searchbox span { position: absolute; left: 15px; top: 8px; font-size: 23px; color: #73837c; }
-.searchbox input { width: 100%; padding: 11px 15px 11px 44px; background: #fff; }
+.searchbox input { width: 100%; padding: 11px 106px 11px 44px; background: #fff; }
+.searchbox button { position: absolute; right: 4px; top: 4px; bottom: 4px; min-width: 68px; border: 0; border-radius: 7px; background: var(--deep); color: white; font-weight: 600; }
+.searchbox button.search-clear { right: 76px; min-width: 30px; padding: 0; background: transparent; color: #7b8882; font-size: 19px; }
 .topbar select { padding: 10px 30px 10px 12px; }
 .primary, .secondary, .icon-button, .detail-actions button, .detail-tabs button, .inline-form button, .path-picker button, .panel > button, .preview-toolbar button, .pagination button, .job-actions button { border: 1px solid var(--deep); border-radius: 8px; padding: 10px 16px; background: white; color: var(--deep); font-weight: 600; }
 .primary { background: var(--deep); color: white; }
@@ -68,6 +70,14 @@ textarea { resize: vertical; line-height: 1.6; }
 .library-count strong { color: var(--deep); font: 600 20px/1 Georgia, "Microsoft YaHei UI", serif; }
 .library-count span { color: #68776f; font-size: 11px; }
 .library-count em { grid-column: 1 / -1; color: #8a948f; font-size: 10px; font-style: normal; }
+.library-filterbar { display: flex; flex-wrap: wrap; align-items: end; gap: 9px 11px; margin: -8px 3px 18px; padding: 12px 13px; border: 1px solid #d8ddd9; border-radius: 11px; background: rgba(250,249,245,.78); }
+.library-filterbar label { display: grid; gap: 4px; min-width: 132px; }
+.library-filterbar label > span { color: #748078; font-size: 10px; font-weight: 600; }
+.library-filterbar input, .library-filterbar select { height: 36px; padding: 7px 10px; }
+.library-filterbar label:nth-child(2) { min-width: 112px; width: 112px; }
+.library-filterbar .sort-control { min-width: 190px; }
+.library-filterbar .clear-filters { height: 36px; margin-left: auto; padding: 7px 11px; border: 1px solid #c9d1cc; border-radius: 8px; background: white; color: #5e7067; }
+.library-filterbar .clear-filters:hover { background: #edf1ee; }
 .batch-select-toolbar { position: sticky; top: 70px; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: -12px 0 15px; padding: 11px 13px; border: 1px solid #cad7d0; border-radius: 9px; background: rgba(247,249,246,.96); box-shadow: 0 7px 20px rgba(38,58,49,.08); backdrop-filter: blur(6px); }
 .batch-select-toolbar label { display: flex; align-items: center; gap: 7px; }
 .batch-select-toolbar strong { margin-left: auto; }
