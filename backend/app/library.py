@@ -352,6 +352,46 @@ def _query_matches(searchable: str, query: str, mode: str) -> bool:
     return any(term in searchable for term in terms) if mode == "any" else all(term in searchable for term in terms)
 
 
+SEARCH_CRITERION_FIELDS = {"all", "title", "author", "year", "abstract", "journal", "keyword", "note"}
+
+
+def _parse_search_criteria(value: str | None) -> list[dict[str, str]]:
+    if not value:
+        return []
+    try:
+        raw = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return []
+    if not isinstance(raw, list):
+        return []
+    criteria: list[dict[str, str]] = []
+    for item in raw[:20]:
+        if not isinstance(item, dict):
+            continue
+        field = str(item.get("field") or "all")
+        term = str(item.get("value") or "").strip()
+        if field in SEARCH_CRITERION_FIELDS and term:
+            criteria.append({"field": field, "value": term})
+    return criteria
+
+
+def _criteria_match(fields: dict[str, str], criteria: list[dict[str, str]]) -> bool:
+    """Match every criterion; each criterion targets one bibliographic field."""
+    normalized = {key: str(value or "").casefold() for key, value in fields.items()}
+    for criterion in criteria:
+        field = criterion["field"]
+        term = criterion["value"].casefold()
+        if field == "year":
+            matched = normalized.get("year", "") == term
+        elif field == "all":
+            matched = any(term in value for value in normalized.values())
+        else:
+            matched = term in normalized.get(field, "")
+        if not matched:
+            return False
+    return True
+
+
 def search_papers(
     query: str,
     page: int = 1,
@@ -369,6 +409,7 @@ def search_papers(
     sort_by: str = "favorite_recent",
     document_types: str | None = None,
     query_mode: str = "all",
+    criteria: str | None = None,
 ) -> dict[str, Any]:
     state = store.snapshot()
     needle = query.casefold().strip()
@@ -378,16 +419,37 @@ def search_papers(
     note_statuses = _selected_options(note_status, {"complete", "incomplete", "empty", "stale"})
     allowed_document_types = {"article", "thesis", "report", "book", "conference", "dataset", "preprint", "other"}
     selected_document_types = _selected_options(document_types, allowed_document_types)
+    search_criteria = _parse_search_criteria(criteria)
     tag_members = {int(key) for key, ids in state["paper_tags"].items() if tag_id in ids} if tag_id else None
     collection_members = {int(key) for key, ids in state["paper_collections"].items() if collection_id in ids} if collection_id else None
     results: list[dict[str, Any]] = []
     notes: dict[int, dict[str, Any]] = {}
+    note_search_texts: dict[int, str] = {}
+    excerpts_by_paper: dict[int, list[str]] | None = None
 
     def paper_note(paper: dict[str, Any]) -> dict[str, Any]:
         paper_id = int(paper["id"])
         if paper_id not in notes:
             notes[paper_id] = store.read_note(paper)
         return notes[paper_id]
+
+    def paper_note_search_text(paper: dict[str, Any]) -> str:
+        """Load Markdown only when a query cannot be answered by bibliography fields."""
+        nonlocal excerpts_by_paper
+        paper_id = int(paper["id"])
+        if paper_id in note_search_texts:
+            return note_search_texts[paper_id]
+        if excerpts_by_paper is None:
+            excerpts_by_paper = {}
+            for item in state["excerpts"].values():
+                excerpts_by_paper.setdefault(int(item["paper_id"]), []).append(
+                    f"{item.get('text') or ''} {item.get('comment') or ''}"
+                )
+        note = paper_note(paper)
+        value = "\n".join(str(note.get(key) or "") for key in NOTE_FIELDS)
+        value += "\n" + " ".join(excerpts_by_paper.get(paper_id, []))
+        note_search_texts[paper_id] = value
+        return value
 
     for paper in state["papers"].values():
         paper_id = int(paper["id"])
@@ -418,21 +480,44 @@ def search_papers(
                 states.add("stale")
             if not states.intersection(note_statuses):
                 continue
-        if needle:
+        if needle or search_criteria:
             fields = {
                 "title": str(paper.get("title") or ""),
                 "author": " ".join(author_display(a) for a in paper.get("authors") or []),
+                "year": str(paper.get("year") or ""),
                 "abstract": str(paper.get("abstract") or ""),
                 "journal": str(paper.get("journal") or ""),
                 "keyword": " ".join(paper.get("keywords") or []),
             }
-            searchable = "\n".join(fields.values()).casefold() if search_in == "all" else fields.get(search_in, "").casefold()
-            if search_in in {"all", "note"}:
-                note = paper_note(paper)
-                excerpt_text = " ".join(str(item.get("text") or "") + " " + str(item.get("comment") or "") for item in state["excerpts"].values() if int(item["paper_id"]) == paper_id)
-                searchable += "\n" + ("\n".join(str(note.get(key) or "") for key in NOTE_FIELDS) + excerpt_text).casefold()
-            matched = _query_matches(searchable, needle, query_mode)
-            if not matched:
+            bibliography = "\n".join(fields.values()).casefold()
+            if needle:
+                if search_in == "note":
+                    searchable = paper_note_search_text(paper).casefold()
+                elif search_in == "all":
+                    searchable = bibliography
+                    if not _query_matches(searchable, needle, query_mode):
+                        searchable += "\n" + paper_note_search_text(paper).casefold()
+                else:
+                    searchable = fields.get(search_in, "").casefold()
+                if not _query_matches(searchable, needle, query_mode):
+                    continue
+            criteria_matched = True
+            normalized_fields = {key: value.casefold() for key, value in fields.items()}
+            for criterion in search_criteria:
+                field = criterion["field"]
+                term = criterion["value"].casefold()
+                if field == "year":
+                    matched = normalized_fields["year"] == term
+                elif field == "note":
+                    matched = term in paper_note_search_text(paper).casefold()
+                elif field == "all":
+                    matched = term in bibliography or term in paper_note_search_text(paper).casefold()
+                else:
+                    matched = term in normalized_fields.get(field, "")
+                if not matched:
+                    criteria_matched = False
+                    break
+            if not criteria_matched:
                 continue
         results.append(paper)
 
@@ -446,6 +531,12 @@ def search_papers(
         results.sort(key=lambda paper: str(paper.get("title") or "").casefold(), reverse=True)
     elif sort_by == "author_asc":
         results.sort(key=lambda paper: (author_display((paper.get("authors") or [{}])[0]).casefold(), str(paper.get("title") or "").casefold()))
+    elif sort_by == "author_desc":
+        results.sort(key=lambda paper: (author_display((paper.get("authors") or [{}])[0]).casefold(), str(paper.get("title") or "").casefold()), reverse=True)
+    elif sort_by == "journal_asc":
+        results.sort(key=lambda paper: (str(paper.get("journal") or "").casefold(), str(paper.get("title") or "").casefold()))
+    elif sort_by == "journal_desc":
+        results.sort(key=lambda paper: (str(paper.get("journal") or "").casefold(), str(paper.get("title") or "").casefold()), reverse=True)
     elif sort_by == "note_updated_desc":
         results.sort(key=lambda paper: str(paper_note(paper).get("updated_at") or ""), reverse=True)
     else:

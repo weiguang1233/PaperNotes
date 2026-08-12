@@ -8,7 +8,7 @@ from urllib.request import Request
 
 from backend.app.enrichment import _chat_completions_endpoint, _parse_llm_json_object
 from backend.app.integrations import ZoteroConfig, load_zotero_paper_context, map_zotero_item
-from backend.app.library import _query_matches, _selected_options, note_overview
+from backend.app.library import _criteria_match, _parse_search_criteria, _query_matches, _selected_options, note_overview
 from backend.app.metadata import clean_keywords, format_note_value
 from backend.app import storage
 from backend.app import config
@@ -232,6 +232,27 @@ def test_keyword_matching_supports_and_or_and_phrase_modes():
     assert _query_matches(searchable, "rainfall extremes", "any") is True
     assert _query_matches(searchable, "weather forecast", "phrase") is True
     assert _query_matches(searchable, "weather extremes", "phrase") is False
+
+
+def test_structured_search_combines_fields_with_and_logic():
+    criteria = _parse_search_criteria(json.dumps([
+        {"field": "year", "value": "2025"},
+        {"field": "all", "value": "wrf"},
+        {"field": "all", "value": "land"},
+    ]))
+    fields = {
+        "year": "2025",
+        "title": "WRF-ELM v1.0: a regional climate model",
+        "abstract": "land-atmosphere interactions over heterogeneous land use regions",
+        "author": "", "journal": "", "keyword": "", "note": "",
+    }
+    assert _criteria_match(fields, criteria) is True
+    assert _criteria_match({**fields, "year": "2024"}, criteria) is False
+
+
+def test_structured_search_ignores_invalid_and_empty_rows():
+    criteria = _parse_search_criteria('[{"field":"title","value":"WRF"},{"field":"bad","value":"x"},{"field":"year","value":""}]')
+    assert criteria == [{"field": "title", "value": "WRF"}]
 
 
 def test_deepseek_endpoint_shape():

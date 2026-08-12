@@ -3,6 +3,12 @@ import { api, isServerMode, patchJson, postJson, putJson } from "./api";
 import type { AppSettings, Collection, DocumentType, Note, NoteVersion, PagedPapers, PaperDetail, PaperSummary, RefreshDiff, RefreshPreview, Tag, TrashPaper } from "./types";
 
 type View = "library" | "review" | "imports" | "organize" | "trash" | "settings";
+type SearchCriterion = { id: number; field: string; value: string };
+
+const SEARCH_FIELD_OPTIONS: [string, string][] = [
+  ["all", "全部内容"], ["title", "标题"], ["author", "作者"], ["year", "年份"],
+  ["journal", "期刊/来源"], ["abstract", "原文摘要"], ["keyword", "关键词"], ["note", "科研笔记"],
+];
 
 const STATUS_LABEL: Record<string, string> = {
   unread: "未读", reading: "在读", read: "已读", archived: "归档",
@@ -45,13 +51,13 @@ export default function App() {
   const [error, setError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [filterStatuses, setFilterStatuses] = useState<string[]>([]);
-  const [searchIn, setSearchIn] = useState("all");
-  const [queryMode, setQueryMode] = useState("all");
-  const [yearFrom, setYearFrom] = useState("");
-  const [yearTo, setYearTo] = useState("");
+  const criterionId = useRef(2);
+  const paperRequestId = useRef(0);
+  const [searchCriteria, setSearchCriteria] = useState<SearchCriterion[]>([{ id: 1, field: "year", value: "" }]);
   const [noteStatuses, setNoteStatuses] = useState<string[]>([]);
   const [documentTypes, setDocumentTypes] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState("favorite_recent");
+  const [sortField, setSortField] = useState("year");
+  const [sortDirection, setSortDirection] = useState("desc");
   const [batchMode, setBatchMode] = useState(false);
   const [batchSelected, setBatchSelected] = useState<Set<number>>(new Set());
   const [batchPapers, setBatchPapers] = useState<Map<number, PaperSummary>>(new Map());
@@ -65,29 +71,32 @@ export default function App() {
   };
 
   const loadPapers = async (page = 1) => {
+    const requestId = ++paperRequestId.current;
     setLoading(true); setError("");
     try {
       const params = new URLSearchParams({ q: query, page: String(page), page_size: "30" });
       if (view === "review") { params.set("needs_review", "true"); }
       if (filterStatuses.length) params.set("reading_status", filterStatuses.join(","));
-      if (searchIn !== "all") params.set("search_in", searchIn);
-      params.set("query_mode", queryMode);
-      if (yearFrom) params.set("year_from", yearFrom);
-      if (yearTo) params.set("year_to", yearTo);
+      const activeCriteria = searchCriteria.filter(item => item.value.trim()).map(({ field, value }) => ({ field, value: value.trim() }));
+      if (activeCriteria.length) params.set("criteria", JSON.stringify(activeCriteria));
       if (noteStatuses.length) params.set("note_status", noteStatuses.join(","));
       if (documentTypes.length) params.set("document_types", documentTypes.join(","));
-      params.set("sort_by", sortBy);
+      params.set("sort_by", `${sortField}_${sortDirection}`);
       const [next, allPapers] = await Promise.all([
         api<PagedPapers>(`/api/v1/search?${params}`),
         api<PagedPapers>("/api/v1/papers?page=1&page_size=1"),
       ]);
+      if (requestId !== paperRequestId.current) return;
       setData(next);
       setLibraryTotal(allPapers.total);
       if (selectedId && !next.items.some(item => item.id === selectedId)) {
         setSelectedId(null); setSelected(null);
       }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "加载失败"); }
-    finally { setLoading(false); }
+    } catch (reason) {
+      if (requestId === paperRequestId.current) setError(reason instanceof Error ? reason.message : "加载失败");
+    } finally {
+      if (requestId === paperRequestId.current) setLoading(false);
+    }
   };
 
   useEffect(() => { void refreshTaxonomy(); }, []);
@@ -95,14 +104,18 @@ export default function App() {
     if (view !== "library" && view !== "review") return;
     const timer = window.setTimeout(() => void loadPapers(1), 260);
     return () => window.clearTimeout(timer);
-  }, [query, view, filterStatuses, searchIn, queryMode, yearFrom, yearTo, noteStatuses, documentTypes, sortBy]);
+  }, [query, view, filterStatuses, searchCriteria, noteStatuses, documentTypes, sortField, sortDirection]);
 
   const submitSearch = () => setQuery(queryInput.trim());
   const clearSearchAndFilters = () => {
-    setQueryInput(""); setQuery(""); setSearchIn("all"); setQueryMode("all"); setFilterStatuses([]);
-    setYearFrom(""); setYearTo(""); setNoteStatuses([]); setDocumentTypes([]); setSortBy("favorite_recent");
+    setQueryInput(""); setQuery(""); setSearchCriteria([{ id: criterionId.current++, field: "year", value: "" }]); setFilterStatuses([]);
+    setNoteStatuses([]); setDocumentTypes([]); setSortField("year"); setSortDirection("desc");
   };
-  const hasActiveFilters = Boolean(query || filterStatuses.length || yearFrom || yearTo || noteStatuses.length || documentTypes.length || searchIn !== "all" || queryMode !== "all" || sortBy !== "favorite_recent");
+  const activeCriteria = searchCriteria.filter(item => item.value.trim());
+  const hasActiveFilters = Boolean(query || activeCriteria.length || filterStatuses.length || noteStatuses.length || documentTypes.length || sortField !== "year" || sortDirection !== "desc");
+  const updateCriterion = (id: number, changes: Partial<SearchCriterion>) => setSearchCriteria(current => current.map(item => item.id === id ? { ...item, ...changes } : item));
+  const addCriterion = () => setSearchCriteria(current => [...current, { id: criterionId.current++, field: "all", value: "" }]);
+  const removeCriterion = (id: number) => setSearchCriteria(current => current.length === 1 ? [{ ...current[0], value: "" }] : current.filter(item => item.id !== id));
 
   useEffect(() => {
     if (!selectedId) { setSelected(null); return; }
@@ -152,15 +165,14 @@ export default function App() {
           <div className={`paper-pane ${selectedId ? "has-selection" : ""}`}>
             <div className="section-heading"><div><span className="eyebrow">{view === "review" ? "REVIEW QUEUE" : "NOTE LIBRARY"}</span><h1>{view === "review" ? "待复核文献" : "我的文献"}</h1></div><div className="section-heading-actions"><div className="library-count"><strong>{libraryTotal.toLocaleString()}</strong><span>文献总数</span>{(hasActiveFilters || view === "review") && <em>当前结果 {data.total.toLocaleString()} 篇</em>}</div><button className={batchMode ? "active" : ""} onClick={() => { if (batchMode) leaveBatchMode(); else { setBatchMode(true); setSelectedId(null); } }}>{batchMode ? "退出批量选择" : "多选文献"}</button></div></div>
             <div className="library-filterbar">
-              <label><span>检索范围</span><select value={searchIn} onChange={event => setSearchIn(event.target.value)}><option value="all">全部内容</option><option value="title">仅题名</option><option value="author">仅作者</option><option value="abstract">仅原文摘要</option><option value="journal">仅期刊/来源</option><option value="keyword">仅关键词</option><option value="note">仅科研笔记</option></select></label>
-              <label><span>关键词匹配</span><select value={queryMode} onChange={event => setQueryMode(event.target.value)}><option value="all">全部关键词（AND）</option><option value="any">任一关键词（OR）</option><option value="phrase">完整短语</option></select></label>
-              <div className="year-range"><span>年份范围</span><div><input aria-label="起始年份" type="number" min="1000" max="2100" value={yearFrom} onChange={event => setYearFrom(event.target.value)} placeholder="起始" /><b>—</b><input aria-label="结束年份" type="number" min="1000" max="2100" value={yearTo} onChange={event => setYearTo(event.target.value)} placeholder="结束" /></div></div>
+              <div className="criteria-builder"><div className="criteria-heading"><div><strong>组合检索</strong><span>每行一个条件，所有行需同时满足（AND）</span></div><button type="button" onClick={addCriterion}>＋ 添加条件</button></div><div className="criteria-rows">{searchCriteria.map((item, index) => <div className="criterion-row" key={item.id}><b>{index + 1}</b><select aria-label={`第 ${index + 1} 行检索字段`} value={item.field} onChange={event => updateCriterion(item.id, { field: event.target.value })}>{SEARCH_FIELD_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><input aria-label={`第 ${index + 1} 行检索内容`} type={item.field === "year" ? "number" : "text"} min={item.field === "year" ? "1000" : undefined} max={item.field === "year" ? "2100" : undefined} value={item.value} onChange={event => updateCriterion(item.id, { value: event.target.value })} placeholder={item.field === "year" ? "例如 2025" : "输入要匹配的内容"} /><button type="button" aria-label={`删除第 ${index + 1} 行条件`} onClick={() => removeCriterion(item.id)}>×</button></div>)}</div></div>
               <MultiFilter label="文献类型" values={documentTypes} options={Object.entries(DOCUMENT_TYPE_LABEL)} onChange={setDocumentTypes} />
               <MultiFilter label="笔记状态" values={noteStatuses} options={[["complete", "核心笔记完整"], ["incomplete", "笔记待完善"], ["empty", "暂无笔记"], ["stale", "Zotero 后有更新"]]} onChange={setNoteStatuses} />
-              <label className="sort-control"><span>排序方式</span><select value={sortBy} onChange={event => setSortBy(event.target.value)}><option value="favorite_recent">收藏优先 · 最近更新</option><option value="year_desc">年份：新到旧</option><option value="year_asc">年份：旧到新</option><option value="title_asc">题名：A–Z</option><option value="title_desc">题名：Z–A</option><option value="author_asc">首位作者：A–Z</option><option value="note_updated_desc">笔记：最近更新</option></select></label>
+              <label className="sort-control"><span>排序字段</span><select value={sortField} onChange={event => setSortField(event.target.value)}><option value="year">年份</option><option value="author">作者</option><option value="title">标题</option><option value="journal">期刊/来源</option></select></label>
+              <label className="sort-direction"><span>排序方向</span><select value={sortDirection} onChange={event => setSortDirection(event.target.value)}><option value="asc">升序</option><option value="desc">降序</option></select></label>
               {hasActiveFilters && <button className="clear-filters" onClick={clearSearchAndFilters}>清除全部条件</button>}
             </div>
-            {hasActiveFilters && <div className="active-filter-summary"><strong>当前采用交集筛选</strong><span>不同栏目之间需同时满足；同一多选栏目匹配任一所选项。</span>{query && <em>关键词：{query}</em>}{(yearFrom || yearTo) && <em>年份：{yearFrom || "不限"}—{yearTo || "不限"}</em>}{filterStatuses.length > 0 && <em>阅读状态 {filterStatuses.length} 项</em>}{documentTypes.length > 0 && <em>文献类型 {documentTypes.length} 项</em>}{noteStatuses.length > 0 && <em>笔记状态 {noteStatuses.length} 项</em>}</div>}
+            {hasActiveFilters && <div className="active-filter-summary"><strong>当前采用组合检索</strong><span>各检索行以及其他筛选栏目之间均需同时满足。</span>{query && <em>快速搜索：{query}</em>}{activeCriteria.map((item, index) => <em key={item.id}>{index + 1}. {SEARCH_FIELD_OPTIONS.find(option => option[0] === item.field)?.[1]}：{item.value}</em>)}{filterStatuses.length > 0 && <em>阅读状态 {filterStatuses.length} 项</em>}{documentTypes.length > 0 && <em>文献类型 {documentTypes.length} 项</em>}{noteStatuses.length > 0 && <em>笔记状态 {noteStatuses.length} 项</em>}</div>}
             {error && <div className="error-banner">{error}</div>}
             {batchMode && <div className="batch-select-toolbar"><label><input type="checkbox" checked={data.items.length > 0 && data.items.every(item => batchSelected.has(item.id))} onChange={event => { const checked = event.target.checked; setBatchSelected(current => { const next = new Set(current); data.items.forEach(item => checked ? next.add(item.id) : next.delete(item.id)); return next; }); setBatchPapers(current => { const next = new Map(current); data.items.forEach(item => checked ? next.set(item.id, item) : next.delete(item.id)); return next; }); }} />选择当前页</label><strong>已选 {batchSelected.size} 篇</strong><button className="primary" disabled={!batchSelected.size} onClick={() => setBatchOpen(true)}>一键读所选文献</button><button className="danger" disabled={!batchSelected.size} onClick={() => void trashBatchPapers()}>删除所选到回收站</button></div>}
             {loading ? <Loading /> : data.items.length === 0 ? <EmptyLibrary onImport={() => setView("imports")} /> : <div className="paper-list">

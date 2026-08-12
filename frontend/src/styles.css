@@ -74,14 +74,21 @@ textarea { resize: vertical; line-height: 1.6; }
 .library-filterbar label { display: grid; gap: 4px; min-width: 132px; }
 .library-filterbar label > span { color: #748078; font-size: 10px; font-weight: 600; }
 .library-filterbar input, .library-filterbar select { height: 36px; padding: 7px 10px; }
-.library-filterbar .sort-control { min-width: 190px; }
+.library-filterbar .sort-control { min-width: 140px; }
+.library-filterbar .sort-direction { min-width: 110px; }
 .library-filterbar .clear-filters { height: 36px; margin-left: auto; padding: 7px 11px; border: 1px solid #c9d1cc; border-radius: 8px; background: white; color: #5e7067; }
 .library-filterbar .clear-filters:hover { background: #edf1ee; }
-.year-range { display: grid; gap: 4px; }
-.year-range > span { color: #748078; font-size: 10px; font-weight: 600; }
-.year-range > div { display: flex; align-items: center; gap: 5px; }
-.year-range input { width: 82px; }
-.year-range b { color: #8b948f; font-weight: 400; }
+.criteria-builder { flex: 1 0 100%; display: grid; gap: 8px; padding: 10px; border: 1px solid #d4dcd7; border-radius: 9px; background: rgba(255,255,255,.68); }
+.criteria-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.criteria-heading > div { display: flex; align-items: baseline; gap: 10px; }
+.criteria-heading strong { color: var(--deep); font-size: 13px; }
+.criteria-heading span { color: #75827c; font-size: 10px; }
+.criteria-heading button { padding: 5px 9px; border: 1px solid #9cafa5; border-radius: 7px; background: #f7faf8; color: #315348; font-size: 11px; font-weight: 600; }
+.criteria-rows { display: grid; gap: 7px; }
+.criterion-row { display: grid; grid-template-columns: 24px 150px minmax(240px,1fr) 32px; align-items: center; gap: 8px; }
+.criterion-row > b { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: #e5ede8; color: #3c5d51; font-size: 10px; }
+.criterion-row select, .criterion-row input { width: 100%; }
+.criterion-row > button { width: 32px; height: 32px; padding: 0; border: 1px solid #dfc8bf; border-radius: 7px; background: #fff; color: #a65438; font-size: 16px; }
 .multi-filter { position: relative; min-width: 150px; }
 .multi-filter > summary { display: grid; gap: 3px; min-height: 36px; padding: 6px 28px 6px 10px; border: 1px solid #cdd4cf; border-radius: 7px; background: white; cursor: pointer; list-style: none; }
 .multi-filter > summary::-webkit-details-marker { display: none; }
