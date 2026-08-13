@@ -425,6 +425,7 @@ function RefreshReviewDialog({ preview, busy, onClose, onApply }: { preview: Ref
 }
 
 type BatchRefreshStatus = { paperId: number; title: string; kind: "saved" | "unchanged" | "skipped" | "error"; message: string };
+type BatchRefreshStrategy = "review" | "auto_accept";
 
 function BatchRefreshDialog({ papers, onClose, onPaperUpdated, onFinished }: { papers: PaperSummary[]; onClose: () => void; onPaperUpdated: (paper: PaperDetail) => void; onFinished: () => void }) {
   const [phase, setPhase] = useState<"ready" | "loading" | "review" | "done">("ready");
@@ -433,6 +434,7 @@ function BatchRefreshDialog({ papers, onClose, onPaperUpdated, onFinished }: { p
   const [accepted, setAccepted] = useState<Record<string, boolean>>({});
   const [statuses, setStatuses] = useState<BatchRefreshStatus[]>([]);
   const [progressTitle, setProgressTitle] = useState("");
+  const [strategy, setStrategy] = useState<BatchRefreshStrategy>("review");
 
   useEffect(() => {
     if (preview) setAccepted(Object.fromEntries(preview.diffs.map(diff => [diff.key, true])));
@@ -449,6 +451,14 @@ function BatchRefreshDialog({ papers, onClose, onPaperUpdated, onFinished }: { p
       try {
         const result = await postJson<RefreshPreview>(`/api/v1/papers/${paper.id}/refresh/preview`, { update_metadata: true, update_abstract_keywords: true, update_notes: true, overwrite_existing: false, use_llm: true });
         if (result.diffs.length) {
+          if (strategy === "auto_accept") {
+            const acceptedAll = Object.fromEntries(result.diffs.map(diff => [diff.key, true]));
+            setProgressTitle(`正在默认确认并保存：${paper.title}`);
+            const saved = await postJson<{ paper: PaperDetail; changed: string[]; message?: string }>(`/api/v1/papers/${paper.id}/refresh/apply`, { token: result.token, accepted: acceptedAll });
+            onPaperUpdated(saved.paper);
+            record(paper, "saved", saved.changed.length ? `默认确认并保存 ${saved.changed.length} 项` : "没有需要保存的字段");
+            continue;
+          }
           setPreview(result); setPhase("review"); return;
         }
         record(paper, "unchanged", result.message || "未发现需要替换的内容");
@@ -479,9 +489,9 @@ function BatchRefreshDialog({ papers, onClose, onPaperUpdated, onFinished }: { p
   const acceptedCount = preview?.diffs.filter(diff => accepted[diff.key]).length || 0;
   const statusLabel: Record<BatchRefreshStatus["kind"], string> = { saved: "已保存", unchanged: "无变化", skipped: "已跳过", error: "失败" };
 
-  return <div className="modal"><div className="dialog refresh-review-dialog batch-refresh-dialog"><button className="close" disabled={phase === "loading"} onClick={onClose}>×</button><span className="eyebrow">BATCH READ</span><h2>批量一键读文献</h2><p>按顺序读取所选文献。每篇有更新时都会完整展示新旧内容，由你勾选后再保存；不会保存 PDF 或全文。</p>
-    {phase === "ready" && <div className="batch-ready"><strong>已选择 {papers.length} 篇文献</strong><div className="batch-paper-preview">{papers.map((paper, index) => <span key={paper.id}>{index + 1}. {paper.title}</span>)}</div><div className="dialog-actions"><button className="secondary" onClick={onClose}>取消</button><button className="primary" disabled={!papers.length} onClick={() => void readFrom(0)}>开始批量读取</button></div></div>}
-    {phase === "loading" && <div className="batch-progress"><Loading /><strong>{currentIndex + 1} / {papers.length}</strong><span>{progressTitle}</span><small>正在调用模型并整理更新预览，请保持此窗口打开。</small></div>}
+  return <div className="modal"><div className="dialog refresh-review-dialog batch-refresh-dialog"><button className="close" disabled={phase === "loading"} onClick={onClose}>×</button><span className="eyebrow">BATCH READ</span><h2>批量一键读文献</h2><p>按顺序读取所选文献。可以逐篇核对，也可以默认确认所有模型建议并自动保存；不会保存 PDF 或全文，手工摘录与关联始终不会被修改。</p>
+    {phase === "ready" && <div className="batch-ready"><strong>已选择 {papers.length} 篇文献</strong><div className="batch-strategy" role="radiogroup" aria-label="批量更新确认方式"><label className={strategy === "review" ? "selected" : ""}><input type="radio" name="batch-strategy" checked={strategy === "review"} onChange={() => setStrategy("review")} /><span><strong>逐篇确认</strong><small>每篇展示新旧对比，由你选择字段后保存。适合需要仔细校正的文献。</small></span></label><label className={strategy === "auto_accept" ? "selected" : ""}><input type="radio" name="batch-strategy" checked={strategy === "auto_accept"} onChange={() => setStrategy("auto_accept")} /><span><strong>默认确认并自动保存</strong><small>每篇自动采用全部模型建议并继续下一篇，不再逐篇停下来确认。</small></span></label></div>{strategy === "auto_accept" && <div className="warning-banner">自动模式会保存每篇文献的全部模型建议字段。已有手工笔记仍受保护，中文文献和综述类文献仍按既定规则跳过。</div>}<div className="batch-paper-preview">{papers.map((paper, index) => <span key={paper.id}>{index + 1}. {paper.title}</span>)}</div><div className="dialog-actions"><button className="secondary" onClick={onClose}>取消</button><button className="primary" disabled={!papers.length} onClick={() => void readFrom(0)}>{strategy === "auto_accept" ? "开始并默认确认" : "开始逐篇核对"}</button></div></div>}
+    {phase === "loading" && <div className="batch-progress"><Loading /><strong>{currentIndex + 1} / {papers.length}</strong><span>{progressTitle}</span><small>{strategy === "auto_accept" ? "正在调用模型并自动保存建议，请保持此窗口打开。" : "正在调用模型并整理更新预览，请保持此窗口打开。"}</small></div>}
     {phase === "review" && preview && <><div className="batch-current"><strong>{currentIndex + 1} / {papers.length}</strong><span>{papers[currentIndex]?.title}</span></div>{preview.message && <div className="warning-banner">{preview.message}</div>}<RefreshDiffWorkspace diffs={preview.diffs} accepted={accepted} onToggle={diff => setAccepted(current => ({ ...current, [diff.key]: !current[diff.key] }))} /><div className="dialog-actions"><span className="muted">已选择 {acceptedCount} / {preview.diffs.length} 项</span><button className="secondary" onClick={() => void skipCurrent()}>跳过此篇</button><button className="primary" disabled={!acceptedCount} onClick={() => void applyCurrent()}>保存所选并继续</button></div></>}
     {phase === "done" && <div className="batch-results"><div className="success-banner">批量读取完成：处理 {statuses.length} 篇，保存 {statuses.filter(item => item.kind === "saved").length} 篇，失败 {statuses.filter(item => item.kind === "error").length} 篇。</div><div className="batch-status-list">{statuses.map(item => <div key={`${item.paperId}-${item.kind}`} className={item.kind}><strong>{statusLabel[item.kind]}</strong><span>{item.title}</span><small>{item.message}</small></div>)}</div><div className="dialog-actions"><button className="primary" onClick={onFinished}>完成</button></div></div>}
   </div></div>;
