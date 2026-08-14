@@ -44,11 +44,9 @@ textarea { resize: vertical; line-height: 1.6; }
 .workspace { grid-column: 2; min-width: 0; }
 
 .topbar { height: 78px; padding: 17px 30px; background: rgba(250,249,245,.92); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; position: sticky; top: 0; z-index: 4; backdrop-filter: blur(12px); }
-.searchbox { flex: 1; max-width: 720px; position: relative; display: flex; }
-.searchbox span { position: absolute; left: 15px; top: 8px; font-size: 23px; color: #73837c; }
-.searchbox input { width: 100%; padding: 11px 106px 11px 44px; background: #fff; }
-.searchbox button { position: absolute; right: 4px; top: 4px; bottom: 4px; min-width: 68px; border: 0; border-radius: 7px; background: var(--deep); color: white; font-weight: 600; }
-.searchbox button.search-clear { right: 76px; min-width: 30px; padding: 0; background: transparent; color: #7b8882; font-size: 19px; }
+.topbar-context { flex: 1; display: grid; gap: 3px; color: #67766f; }
+.topbar-context strong { color: var(--deep); font-size: 13px; }
+.topbar-context span { font-size: 11px; }
 .topbar select { padding: 10px 30px 10px 12px; }
 .primary, .secondary, .icon-button, .detail-actions button, .detail-tabs button, .inline-form button, .path-picker button, .panel > button, .preview-toolbar button, .pagination button, .job-actions button { border: 1px solid var(--deep); border-radius: 8px; padding: 10px 16px; background: white; color: var(--deep); font-weight: 600; }
 .primary { background: var(--deep); color: white; }
@@ -103,8 +101,10 @@ textarea { resize: vertical; line-height: 1.6; }
 .multi-filter-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px 7px; border-bottom: 1px solid #e5e8e6; }
 .multi-filter-head b { font-size: 11px; }
 .multi-filter-head button { padding: 2px 6px; border: 0; color: #a34f32; font-size: 10px; }
-.topbar .multi-filter.compact { min-width: 132px; }
-.topbar .multi-filter.compact > summary { min-height: 40px; }
+.preset-row { display: flex; align-items: center; gap: 12px; margin: 2px 0 10px; }
+.preset-row button { border: 1px solid var(--deep); border-radius: 8px; padding: 9px 13px; background: white; color: var(--deep); font-weight: 600; }
+.preset-row button:hover { background: #ecf0ed; }
+.preset-row span { color: #748078; font-size: 11px; }
 .active-filter-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: -9px 3px 17px; color: #66736c; font-size: 10px; }
 .active-filter-summary strong { color: #193d31; }
 .active-filter-summary em { padding: 3px 7px; border-radius: 999px; background: #e8efeb; color: #35594c; font-style: normal; }
